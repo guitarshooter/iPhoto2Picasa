@@ -4,6 +4,16 @@ IPHOTODIR=~/Pictures/iPhoto\ Library/Masters
 TMPDIR=/tmp
 TMPFILE=$TMPDIR/.iPhoto2Picasa
 
+#コマンド存在チェック
+#google コマンドがなければ終了
+
+which google >/dev/null
+if [ $? -ne 0 ];then
+  echo "googlecl not found."
+  echo "Download at http://code.google.com/p/googlecl/downloads/list and Install"
+  exit 1
+fi
+
 #tmpファイルから日付を読む
 if [ -f $TMPFILE ];then
   LASTDATE=`cat $TMPFILE`
@@ -17,7 +27,6 @@ for dir in `find . -d 4 -print`
 do
   targetdir=`basename "$dir"`
   dirnum=`echo $targetdir|sed -e 's/-//'`
-  #albumname=`echo $dir|sed -e "s/\/$targetdir//"|sed -e "s/^\.\///g"`
   if [ $dirnum -gt $LASTDATE ];then
     for file in $dir/*.JPG
     do
@@ -32,28 +41,16 @@ do
 	if [ $? -eq 1 ];then
 	  sips -Z 2048 $file --out $TMPDIR/$filename
 	  google picasa post --title $albumname $TMPDIR/$filename 
-	  if [ $? -eq 0 ];then
-	    echo "$albumname - $file POST"
-	  fi
+	  rm $TMPDIR/$filename
 	fi
       # アルバムがなければ作成してUPLOAD
       else
-        echo "CREATE"
 	sips -Z 2048 $file --out $TMPDIR/$filename
 	google picasa create --title $albumname $TMPDIR/$filename
-	if [ $? -eq 0 ];then
-	  echo "$albumname CREATE $file POST"
-	fi
+	rm $TMPDIR/$filename
       fi
     done
   fi
 done
 
 echo `date +%Y%m%d%H%M%S` >$TMPFILE
-
-#検索にマッチしたフォルダ
-   #アルバム名のリストを取得
-   #あれば、画像圧縮。そのアルバムにPOST
-   #なければ、画像圧縮。撮影日付でCREATE
-
- #tmpファイルにUPしたフォルダを書く
