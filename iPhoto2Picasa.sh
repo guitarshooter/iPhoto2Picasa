@@ -3,11 +3,13 @@
 IPHOTODIR=~/Pictures/iPhoto\ Library/Masters
 TMPDIR=/tmp
 TMPFILE=$TMPDIR/.iPhoto2Picasa
+#cron実行用。
+PATH=$PATH:/usr/local/bin
 
 #コマンド存在チェック
 #google コマンドがなければ終了
 
-which google >/dev/null
+which google >/dev/null 2>&1
 if [ $? -ne 0 ];then
   echo "googlecl not found."
   echo "Download at http://code.google.com/p/googlecl/downloads/list and Install"
@@ -52,5 +54,5 @@ do
     done
   fi
 done
-
+#実行日を出力。
 echo `date +%Y%m%d%H%M%S` >$TMPFILE
