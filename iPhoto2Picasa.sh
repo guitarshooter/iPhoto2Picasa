@@ -1,10 +1,12 @@
 #!/bin/sh
 
 IPHOTODIR=~/Pictures/iPhoto\ Library/Masters
-TMPDIR=/tmp
-TMPFILE=$TMPDIR/.iPhoto2Picasa
+BASEDIR=$(cd $(dirname $0);pwd)
+TMPDIR=$BASEDIR/work
+TMPFILE=$BASEDIR/.iPhoto2Picasa
 #cron実行用。
 PATH=$PATH:/usr/local/bin
+
 
 #コマンド存在チェック
 #google コマンドがなければ終了
@@ -15,6 +17,16 @@ if [ $? -ne 0 ];then
   echo "Download at http://code.google.com/p/googlecl/downloads/list and Install"
   exit 1
 fi
+which ffmpeg >/dev/null 2>&1
+if [ $? -ne 0 ];then
+  echo "ffmpeg not found."
+  echo "Prease Install ffmpeg"
+  exit 1
+fi
+
+#TMPDIR作成 あれば動作中なので終了
+mkdir $TMPDIR 2>/dev/null ||(echo "Cannot run multiple." >&2;exit 9;)
+trap "rm -rf $TMPDIR;exit" 1 2 3 15
 
 #tmpファイルから日付を読む
 if [ -f $TMPFILE ];then
@@ -32,36 +44,52 @@ do
   if [ "$dirnum" -gt $LASTDATE ];then
     for file in $dir/* #フルパス
     do
-      filename=`basename $file` #ファイル名のみ
+      filename="`basename "$file"`" #ファイル名のみ
       albumname=`stat -l -t %Y/%m/%d "$file"|cut -f6 -d" "`
       ext=`echo ${filename##*.}|tr "A-Z" "a-z"` #拡張子（小文字）
       # アルバム名存在チェック
       google picasa list-albums |grep $albumname
       # アルバムがあればファイル名チェック
       if [ $? -eq 0 ];then
-        google picasa list --title $albumname|cut -f1 -d,|grep $filename
+        google picasa list --title $albumname|cut -f1 -d,|grep "$filename"
         # ファイルがアルバムになければPOST
         if [ $? -eq 1 ];then
-          if [ $ext -eq "jpg" ];then
+          if [ $ext = "jpg" ];then
             sips -Z 2048 "$file" --out "$TMPDIR/$filename"
+            UPLOADFILE="$TMPDIR/$filename"
+          elif [ $ext = "mov" ];then
+            UPLOADFILE=$TMPDIR/"`echo $filename|sed -e 's/.mov/.mp4/'`"
+            ffmpeg -i "$file" -s 960x540 "$UPLOADFILE"
           else
-            cp "$file" "$TMPDIR/$filename"
+            #cp "$file" "$TMPDIR/$filename"
+            UPLOADFILE="$file"
           fi
-          google picasa post --title $albumname $TMPDIR/$filename 
-          rm $TMPDIR/$filename
+          google picasa post --title $albumname "$UPLOADFILE"
+          rm "$TMPDIR/$filename"
         fi
         # アルバムがなければ作成してUPLOAD
       else
-        if [ $ext -eq "jpg" ];then
+        if [ $ext = "jpg" ];then
           sips -Z 2048 "$file" --out "$TMPDIR/$filename"
+          UPLOADFILE="$TMPDIR/$filename"
+        elif [ $ext = "mov" ];then
+          UPLOADFILE=$TMPDIR/"`echo $filename|sed -e 's/.mov/.mp4/'`"
+          ffmpeg -i "$file" -s 960x540 "$UPLOADFILE"
         else
-          cp "$file" "$TMPDIR/$filename"
+          #cp "$file" "$TMPDIR/$filename"
+          UPLOADFILE="$file"
         fi
-        google picasa create --title $albumname "$TMPDIR/$filename"
-        rm "$TMPDIR/$filename"
+        if [ -f "$UPLOADFILE" ];then
+          google picasa create --title $albumname "$UPLOADFILE"
+          if [ -f "$TMPDIR/$filename" ];then
+            rm "$TMPDIR/$filename"
+          fi
+        fi
       fi
     done
   fi
 done
-#実行日を出力。
-echo `date +%Y%m%d%H%M%S` >$TMPFILE
+#最終アップロードDIRを出力。
+#echo `date +%Y%m%d%H%M%S` >$TMPFILE
+echo $dirnum >$TMPFILE
+rm -rf $TMPDIR
