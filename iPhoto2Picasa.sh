@@ -6,6 +6,8 @@ TMPDIR=$BASEDIR/work
 TMPFILE=$BASEDIR/.iPhoto2Picasa
 #cron実行用。
 PATH=$PATH:/usr/local/bin
+IFS="
+"
 
 
 #コマンド存在チェック
@@ -24,31 +26,60 @@ if [ $? -ne 0 ];then
 fi
 
 #TMPDIR作成 あれば動作中なので終了
-mkdir $TMPDIR 2>/dev/null ||(echo "Cannot run multiple." >&2;exit 9;)
+#mkdir $TMPDIR 2>/dev/null ||(echo "Cannot run multiple." >&2; exit;)
+mkdir $TMPDIR 2>/dev/null
+if [ $? -ne 0 ];then
+  echo "Cannot Run Multiple."
+  exit 9;
+fi
 trap "rm -rf $TMPDIR;exit" 1 2 3 15
 
 #動画・静止画ファイルをリサイズする関数
 function fnc_resize()
 {
-  file=$1
+  file="$1"
   filename="`basename "$file"`" #ファイル名のみ
   ext=`echo ${filename##*.}|tr "A-Z" "a-z"` #拡張子（小文字）
   if [ $ext = "jpg" ];then
     sips -Z 2048 "$file" --out "$TMPDIR/$filename"
     UPLOADFILE="$TMPDIR/$filename"
-  elif [ $ext = "mov" ];then
-    UPLOADFILE=$TMPDIR/"`echo $filename|sed -e 's/.mov/.mp4/'`"
-    ffmpeg -i "$file" -s 960x540 "$UPLOADFILE"
+#  elif [ $ext = "mov" ];then
+#    UPLOADFILE=$TMPDIR/"`echo $filename|sed -e 's/.mov/.mp4/'`"
+#    ffmpeg -i "$file" -s 960x540 "$UPLOADFILE"
   else
     #cp "$file" "$TMPDIR/$filename"
     UPLOADFILE="$file"
   fi
 }
 
+function fnc_upload()
+{
+  file="$1"
+  filename="`basename "$file"`" #ファイル名のみ
+  albumname=`stat -l -t %Y/%m/%d "$file"|cut -f6 -d" "`
+  # アルバム名存在チェック
+  google picasa list-albums |grep $albumname
+  # アルバムがあればファイル名チェック
+  if [ $? -eq 0 ];then
+    google picasa list --title $albumname|cut -f1 -d,|grep "$filename"
+    # ファイルがアルバムになければPOST
+    if [ $? -eq 1 ];then
+      fnc_resize "$file"
+      google picasa post --title $albumname "$UPLOADFILE"
+    fi
+    # アルバムがなければ作成してUPLOAD
+  else
+    fnc_resize "$file"
+    if [ -f "$UPLOADFILE" ];then
+      google picasa create --title $albumname "$UPLOADFILE"
+    fi
+  fi
+}
+
 if [ $# -ge 1 ];then
   for f in $*
   do
-    fnc_resize $f
+    fnc_upload "$f"
   done
 else
   #tmpファイルから日付を読む
@@ -67,25 +98,7 @@ else
     if [ "$dirnum" -gt $LASTDATE ];then
       for file in $dir/* #フルパス
       do
-        filename="`basename "$file"`" #ファイル名のみ
-        albumname=`stat -l -t %Y/%m/%d "$file"|cut -f6 -d" "`
-        # アルバム名存在チェック
-        google picasa list-albums |grep $albumname
-        # アルバムがあればファイル名チェック
-        if [ $? -eq 0 ];then
-          google picasa list --title $albumname|cut -f1 -d,|grep "$filename"
-          # ファイルがアルバムになければPOST
-          if [ $? -eq 1 ];then
-            fnc_resize "$file"
-            google picasa post --title $albumname "$UPLOADFILE"
-          fi
-          # アルバムがなければ作成してUPLOAD
-        else
-          fnc_resize "$file"
-          if [ -f "$UPLOADFILE" ];then
-            google picasa create --title $albumname "$UPLOADFILE"
-          fi
-        fi
+        fnc_upload $file
       done
     fi
   done
