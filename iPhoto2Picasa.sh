@@ -18,12 +18,13 @@ if [ $? -ne 0 ];then
   echo "Download at http://code.google.com/p/googlecl/downloads/list and Install"
   exit 1
 fi
-which ffmpeg >/dev/null 2>&1
-if [ $? -ne 0 ];then
-  echo "ffmpeg not found."
-  echo "Prease Install ffmpeg"
-  exit 1
-fi
+# 動画圧縮部分コメントアウト
+#which ffmpeg >/dev/null 2>&1
+#if [ $? -ne 0 ];then
+#  echo "ffmpeg not found."
+#  echo "Prease Install ffmpeg"
+#  exit 1
+#fi
 
 #TMPDIR作成 あれば動作中なので終了
 #mkdir $TMPDIR 2>/dev/null ||(echo "Cannot run multiple." >&2; exit;)
@@ -43,6 +44,7 @@ function fnc_resize()
   if [ $ext = "jpg" ];then
     sips -Z 2048 "$file" --out "$TMPDIR/$filename"
     UPLOADFILE="$TMPDIR/$filename"
+# 動画を圧縮すると付加がかかるのでコメントアウト
 #  elif [ $ext = "mov" ];then
 #    UPLOADFILE=$TMPDIR/"`echo $filename|sed -e 's/.mov/.mp4/'`"
 #    ffmpeg -i "$file" -s 960x540 "$UPLOADFILE"
@@ -56,6 +58,7 @@ function fnc_upload()
 {
   file="$1"
   filename="`basename "$file"`" #ファイル名のみ
+  ext=`echo ${filename##*.}|tr "A-Z" "a-z"` #拡張子（小文字）
   albumname=`stat -l -t %Y/%m/%d "$file"|cut -f6 -d" "`
   # アルバム名存在チェック
   google picasa list-albums |grep $albumname
@@ -73,6 +76,10 @@ function fnc_upload()
     if [ -f "$UPLOADFILE" ];then
       google picasa create --title $albumname "$UPLOADFILE"
     fi
+  fi
+  # 動画はYoutubeにも非公開で送信。
+  if [ $ext = "mov" -o $ext = "avi" ];then
+    google youtube post "$UPLOADFILE" --category People --access=private
   fi
 }
 
