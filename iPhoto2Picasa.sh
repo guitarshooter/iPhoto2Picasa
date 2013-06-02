@@ -4,6 +4,7 @@ IPHOTODIR=~/Pictures/iPhoto\ Library/Masters
 BASEDIR=$(cd $(dirname $0);pwd)
 TMPDIR=$BASEDIR/work
 TMPFILE=$BASEDIR/.iPhoto2Picasa
+CONFFILE=$BASEDIR/.iPhoto2Picasa.conf #設定ファイル。別アカ記入。
 #cron実行用。
 PATH=$PATH:/usr/local/bin
 IFS="
@@ -35,6 +36,12 @@ if [ $? -ne 0 ];then
 fi
 trap "rm -rf $TMPDIR;exit" 1 2 3 15
 
+if [ ! -e $CONFFILE ];then
+  echo ".iPhoto2Picasa.conf is need."
+  exit 9;
+fi
+
+
 #動画・静止画ファイルをリサイズする関数
 function fnc_resize()
 {
@@ -60,23 +67,26 @@ function fnc_upload()
   filename="`basename "$file"`" #ファイル名のみ
   ext=`echo ${filename##*.}|tr "A-Z" "a-z"` #拡張子（小文字）
   albumname=`stat -l -t %Y/%m/%d "$file"|cut -f6 -d" "`
-  # アルバム名存在チェック
-  google picasa list-albums |grep $albumname
-  # アルバムがあればファイル名チェック
-  if [ $? -eq 0 ];then
-    google picasa list --title $albumname|cut -f1 -d,|grep "$filename"
-    # ファイルがアルバムになければPOST
-    if [ $? -eq 1 ];then
+  for account in `cat $CONFFILE`
+  do
+    # アルバム名存在チェック
+    google picasa list-albums --user="$account"|grep $albumname
+    # アルバムがあればファイル名チェック
+    if [ $? -eq 0 ];then
+      google picasa list --title $albumname --user="$account"|cut -f1 -d,|grep "$filename"
+      # ファイルがアルバムになければPOST
+      if [ $? -eq 1 ];then
+        fnc_resize "$file"
+        google picasa post --title $albumname "$UPLOADFILE" --user="$account"
+      fi
+      # アルバムがなければ作成してUPLOAD
+    else
       fnc_resize "$file"
-      google picasa post --title $albumname "$UPLOADFILE"
+      if [ -f "$UPLOADFILE" ];then
+        google picasa create --title $albumname "$UPLOADFILE" --user="$account"
+      fi
     fi
-    # アルバムがなければ作成してUPLOAD
-  else
-    fnc_resize "$file"
-    if [ -f "$UPLOADFILE" ];then
-      google picasa create --title $albumname "$UPLOADFILE"
-    fi
-  fi
+  done
   # 動画はYoutubeにも非公開で送信。
   if [ $ext = "mov" -o $ext = "avi" ];then
     google youtube post "$UPLOADFILE" --category People --access=private
